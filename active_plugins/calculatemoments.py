@@ -50,12 +50,12 @@ YES          NO            YES
 """
 
 
-def get_object_moment(pixels, func):
-    labs = np.unique(pixels)
-    moms = np.zeros([np.max(labs) + 1, 1])
+def get_object_moment(pixels, labels, func):
+    labs = np.unique(labels)
+    moms = np.zeros(np.max(labs) + 1)
     for l in labs:
         if l != 0:
-            px = pixels[np.where(pixels == l)]
+            px = pixels[np.where(labels == l)]
             moms[l] = func(px)
     return moms
 
@@ -328,22 +328,18 @@ class CalculateMoments(cpm.Module):
 
         for name in self.moms.value.split(","):
             fn = MOM_TO_F[name]
-            value = get_object_moment(pixels, fn)
+            moments = get_object_moment(pixels, labels, fn)
             statistics += self.record_measurement(
-                workspace, image_name, object_name, name, value
+                workspace, image_name, object_name, name, moments
             )
         return statistics
 
     def is_interactive(self):
         return False
 
-    def display(self, workspace):
+    def display(self, workspac, figure):
         statistics = workspace.display_data.statistics
-        figure = workspace.create_or_find_figure(
-            title="CalculateMoments, image cycle #%d"
-            % (workspace.measurements.image_set_number),
-            subplots=(1, 1),
-        )
+        figure.set_subplots((1,1))
         figure.subplot_table(0, 0, statistics, ratio=(0.25, 0.25, 0.25, 0.25))
 
     def get_features(self):
