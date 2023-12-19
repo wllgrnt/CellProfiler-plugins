@@ -26,22 +26,18 @@ from centrosome.cpmorphology import fixup_scipy_ndimage_result as fix
 
 
 __doc__ = """\
-CalculateMoments
+CalculateGini
 ================
 
-**CalculateMoments** extracts moments statistics from a given distribution of pixel values.
+**CalculateGini** extracts the Gini coefficient from a given distribution of pixel values.
 
-This module extracts a collection of quantitative measures of the shape of a distribution of pixel values. 
-The user can use all pixels to compute the moments or can restrict to pixels within objects. 
+The user can use all pixels to compute the gini or can restrict to pixels within objects. 
 If the image has a mask, only unmasked pixels will be used.
 
-Available measurements:  
-- Mean  
-- Standard deviation (computed using the unbiased estimator)
-- Skewness (the third moment about the mean, scaled by the standard deviation to the third power)
-- Kurtosis (the fourth moment about the mean, scaled by the standard deviation to the fourth power)
+Code borrows almost entirely from calculatemoments.py
 
-|
+Available measurements:  
+- Gini
 
 ============ ============ ===============
 Supports 2D? Supports 3D? Respects masks?
@@ -52,77 +48,41 @@ YES          NO            YES
 """
 
 
-def get_object_moment(pixels, labels, func):
+
+
+def get_gini(pixels, labels):
+    """For each label, find the corresponding pixels and compute the gini"""
     labs = np.unique(labels)
-    moms = np.zeros(np.max(labs) + 1)
+    gini = np.zeros(np.max(labs) + 1)
     for l in labs:
         if l != 0:
             px = pixels[np.where(labels == l)]
-            moms[l] = func(px)
-    return moms
+            gini[l] = get_gini_on_pixels(px)
+    return gini
 
 
-def mean(pixels):
-    return np.mean(pixels)
+def get_gini_on_pixels(pixels):
+    '''Given an array of pixels, get the Gini coefficient
+    
+    This entails generating a histogram of pixel values, calculating the CDF,
+    and then calculating the Gini coefficient from the CDF.
+
+    Assumes intensties are always positive.
+    '''
+    sorted_pixels = np.sort(pixels.flatten())
+    cum_values = np.cumsum(sorted_pixels, dtype=float) 
+    cum_values /= cum_values[-1]
+
+    indices = np.arange(1, len(sorted_pixels) + 1)
+    gini = 1 - 2 * np.sum((cum_values - indices / len(sorted_pixels)) / len(sorted_pixels))
+    return gini
 
 
-def std(pixels):
-    return np.std(pixels, ddof=1)
+GINI = 'GINI'
 
+class CalculateGini(cpm.Module):
 
-def skewness(pixels):
-    if len(pixels) == 0:
-        return 0
-
-    pixels = np.array(pixels, dtype="float64")
-    mean = np.mean(pixels)
-
-    num = np.sum(np.power(pixels - mean, 3))
-    # num=num/(len(pixels)*len(pixels[0]))
-    num = num / pixels.size
-    denom = np.std(pixels)
-
-    if denom == 0.0:
-        skew = 0.0
-    else:
-        skew = num / (denom * denom * denom)
-    return skew
-
-
-def kurtosis(pixels):
-    if len(pixels) == 0:
-        return 0
-
-    pixels = np.array(pixels, dtype="float64")
-    mean = np.mean(pixels)
-
-    num = np.sum(np.power(pixels - mean, 4))
-    # num=num/(len(pixels)*len(pixels[0]))
-    num = num / pixels.size
-    denom = np.std(pixels)
-
-    if denom == 0.0:
-        kurt = 0.0
-    else:
-        kurt = num / (denom * denom * denom * denom)
-    return kurt
-
-
-"""The category of the measurements made by this module"""
-MOMENTS = "Moments"
-
-MOM_1 = "Mean"
-MOM_2 = "Standard Deviation"
-MOM_3 = "Skewness"
-MOM_4 = "Kurtosis"
-MOM_ALL = [MOM_1, MOM_2, MOM_3, MOM_4]
-
-MOM_TO_F = {MOM_1: mean, MOM_2: std, MOM_3: skewness, MOM_4: kurtosis}
-
-
-class CalculateMoments(cpm.Module):
-
-    module_name = "CalculateMoments"
+    module_name = "CalculateGini"
     category = "Measurement"
     variable_revision_number = 1
 
@@ -140,20 +100,20 @@ class CalculateMoments(cpm.Module):
         self.add_objects = DoSomething("", "Add another object", self.add_object_cb)
         self.object_divider = cps.Divider()
 
-        self.moms = MultiChoice(
-            "Moments to compute",
-            MOM_ALL,
-            MOM_ALL,
-            doc="""Moments are statistics describing the distribution of values in the set of pixels of interest:
+        # self.moms = MultiChoice(
+        #     "Moments to compute",
+        #     MOM_ALL,
+        #     MOM_ALL,
+        #     doc="""Moments are statistics describing the distribution of values in the set of pixels of interest:
                 
-                - %(MOM_1)s - the first image moment, which corresponds to the central value of the collection of pixels of interest.
-                - %(MOM_2)s - the second image moment, which measures the amount of variation or dispersion of pixel values about its mean.
-                - %(MOM_3)s - a scaled version of the third moment, which measures the asymmetry of the pixel values distribution about its mean.
-                - %(MOM_4)s - a scaled version of the fourth moment, which measures the "peakedness" of the pixel values distribution.
+        #         - %(MOM_1)s - the first image moment, which corresponds to the central value of the collection of pixels of interest.
+        #         - %(MOM_2)s - the second image moment, which measures the amount of variation or dispersion of pixel values about its mean.
+        #         - %(MOM_3)s - a scaled version of the third moment, which measures the asymmetry of the pixel values distribution about its mean.
+        #         - %(MOM_4)s - a scaled version of the fourth moment, which measures the "peakedness" of the pixel values distribution.
                 
-                Choose one or more moments to measure."""
-            % globals(),
-        )
+        #         Choose one or more moments to measure."""
+        #     % globals(),
+        # )
 
     def settings(self):
         """The settings as they appear in the save file."""
@@ -165,7 +125,7 @@ class CalculateMoments(cpm.Module):
             for group in groups:
                 for element in elements:
                     result += [getattr(group, element)]
-        result += [self.moms]
+        # result += [self.moms]
         return result
 
     def prepare_settings(self, setting_values):
@@ -190,7 +150,7 @@ class CalculateMoments(cpm.Module):
                 result += group.visible_settings()
             result += [add_button, div]
 
-        result += [self.moms]
+        # result += [self.moms]
         return result
 
     def add_image_cb(self, can_remove=True):
@@ -235,12 +195,12 @@ class CalculateMoments(cpm.Module):
                 "Select objects to measure",
                 "None",
                 doc="""
-                     What did you call the objects from which you want to calculate moments?
+                     What did you call the objects from which you want to calculate the Gini?
                      If you only want to calculate moments of
                      the image overall, you can remove all objects using the "Remove this object" button.
                      Objects specified here will have moments computed against *all* images specified above, which
                      may lead to image-object combinations that are unnecessary. If you
-                     do not want this behavior, use multiple CalculateMoments
+                     do not want this behavior, use multiple CalculateGini
                      modules to specify the particular image-object measures that you want.""",
             ),
         )
@@ -292,12 +252,10 @@ class CalculateMoments(cpm.Module):
         statistics = []
         input_image = workspace.image_set.get_image(image_name, must_be_grayscale=True)
         pixels = input_image.pixel_data
-        for name in self.moms.value.split(","):
-            fn = MOM_TO_F[name]
-            value = fn(pixels)
-            statistics += self.record_image_measurement(
-                workspace, image_name, name, value
-            )
+        gini = get_gini_on_pixels(pixels)
+        statistics += self.record_image_measurement(
+            workspace, image_name, 'Gini', gini
+        )
         return statistics
 
     def run_object(self, image_name, object_name, workspace):
@@ -328,12 +286,11 @@ class CalculateMoments(cpm.Module):
             labels = labels.copy()
             labels[~mask] = 0
 
-        for name in self.moms.value.split(","):
-            fn = MOM_TO_F[name]
-            moments = get_object_moment(pixels, labels, fn)
-            statistics += self.record_measurement(
-                workspace, image_name, object_name, name, moments
-            )
+        # the good stuff
+        gini = get_gini(pixels, labels)
+        statistics += self.record_measurement(
+            workspace, image_name, object_name, 'Gini', gini
+        )
         return statistics
 
     def is_interactive(self):
@@ -346,7 +303,7 @@ class CalculateMoments(cpm.Module):
 
     def get_features(self):
         """Return a measurement feature name"""
-        return MOM_ALL
+        return ['Gini']
 
     def get_measurement_columns(self, pipeline):
         """Get column names output for each measurement."""
@@ -356,7 +313,7 @@ class CalculateMoments(cpm.Module):
                 cols += [
                     (
                         "Image",
-                        "%s_%s_%s" % (MOMENTS, feature, im.image_name.value),
+                        "%s_%s_%s" % (GINI, feature, im.image_name.value),
                         COLTYPE_FLOAT,
                     )
                 ]
@@ -367,7 +324,7 @@ class CalculateMoments(cpm.Module):
                     cols += [
                         (
                             ob.object_name.value,
-                            "%s_%s_%s" % (MOMENTS, feature, im.image_name.value),
+                            "%s_%s_%s" % (GINI, feature, im.image_name.value),
                             COLTYPE_FLOAT,
                         )
                     ]
@@ -382,9 +339,9 @@ class CalculateMoments(cpm.Module):
         returns a list of category names
         """
         if any([object_name == og.object_name for og in self.object_groups]):
-            return [MOMENTS]
+            return [GINI]
         elif object_name == "Image":
-            return [MOMENTS]
+            return [GINI]
         else:
             return []
 
@@ -419,7 +376,7 @@ class CalculateMoments(cpm.Module):
         data = fix(result)
         data[~np.isfinite(data)] = 0
         workspace.add_measurement(
-            object_name, "%s_%s_%s" % (MOMENTS, feature_name, image_name), data
+            object_name, "%s_%s_%s" % (GINI, feature_name, image_name), data
         )
         statistics = [
             [image_name, object_name, feature_name, "%f" % (d) if len(data) else "-"]
@@ -433,7 +390,7 @@ class CalculateMoments(cpm.Module):
         if not np.isfinite(result):
             result = 0
         workspace.measurements.add_image_measurement(
-            "%s_%s_%s" % (MOMENTS, feature_name, image_name), result
+            "%s_%s_%s" % (GINI, feature_name, image_name), result
         )
         statistics = [[image_name, "-", feature_name, "%f" % (result)]]
         return statistics
