@@ -69,13 +69,12 @@ def get_gini_on_pixels(pixels):
 
     Assumes intensties are always positive.
     '''
-    sorted_pixels = np.sort(pixels.flatten())
-    cum_values = np.cumsum(sorted_pixels, dtype=float) 
-    cum_values /= cum_values[-1]
+    flattened = np.sort(np.ravel(pixels))
+    npix = np.size(flattened)
+    normalization = np.abs(np.mean(flattened)) * npix * (npix - 1)
+    kernel = (2.0 * np.arange(1, npix + 1) - npix - 1) * np.abs(flattened)
 
-    indices = np.arange(1, len(sorted_pixels) + 1)
-    gini = 1 - 2 * np.sum((cum_values - indices / len(sorted_pixels)) / len(sorted_pixels))
-    return gini
+    return np.sum(kernel) / normalization
 
 
 GINI = 'GINI'
