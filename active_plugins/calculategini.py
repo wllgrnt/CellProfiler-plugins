@@ -5,7 +5,6 @@
 #################################
 
 import numpy as np
-import scipy.ndimage as scind
 
 #################################
 #
@@ -14,12 +13,9 @@ import scipy.ndimage as scind
 ##################################
 
 import cellprofiler_core.module as cpm
-import cellprofiler_core.measurement as cpmeas
-import cellprofiler_core.object as cpo
 import cellprofiler_core.setting as cps
 from cellprofiler_core.constants.measurement import COLTYPE_FLOAT
 from cellprofiler_core.setting.do_something import DoSomething
-from cellprofiler_core.setting.multichoice import MultiChoice
 from cellprofiler_core.setting.subscriber import ImageSubscriber, LabelSubscriber
 from cellprofiler_core.utilities.core.object import size_similarly
 from centrosome.cpmorphology import fixup_scipy_ndimage_result as fix
@@ -31,12 +27,12 @@ CalculateGini
 
 **CalculateGini** extracts the Gini coefficient from a given distribution of pixel values.
 
-The user can use all pixels to compute the gini or can restrict to pixels within objects. 
+The user can use all pixels to compute the gini or can restrict to pixels within objects.
 If the image has a mask, only unmasked pixels will be used.
 
 Code borrows almost entirely from calculatemoments.py
 
-Available measurements:  
+Available measurements:
 - Gini
 
 ============ ============ ===============
@@ -48,27 +44,25 @@ YES          NO            YES
 """
 
 
-
-
 def get_gini(pixels, labels):
     """For each label, find the corresponding pixels and compute the gini"""
     labs = np.unique(labels)
     gini = np.zeros(np.max(labs) + 1)
-    for l in labs:
-        if l != 0:
-            px = pixels[np.where(labels == l)]
-            gini[l] = get_gini_on_pixels(px)
-    return gini
+    for lab in labs:
+        if lab != 0:
+            px = pixels[np.where(labels == lab)]
+            gini[lab] = get_gini_on_pixels(px)
+    return gini[1:]  # skip the 0th value
 
 
 def get_gini_on_pixels(pixels):
-    '''Given an array of pixels, get the Gini coefficient
-    
+    """Given an array of pixels, get the Gini coefficient
+
     This entails generating a histogram of pixel values, calculating the CDF,
     and then calculating the Gini coefficient from the CDF.
 
     Assumes intensties are always positive.
-    '''
+    """
     flattened = np.sort(np.ravel(pixels))
     npix = np.size(flattened)
     normalization = np.abs(np.mean(flattened)) * npix * (npix - 1)
@@ -77,7 +71,8 @@ def get_gini_on_pixels(pixels):
     return np.sum(kernel) / normalization
 
 
-GINI = 'GINI'
+GINI = "GINI"
+
 
 class CalculateGini(cpm.Module):
 
@@ -99,21 +94,6 @@ class CalculateGini(cpm.Module):
         self.add_objects = DoSomething("", "Add another object", self.add_object_cb)
         self.object_divider = cps.Divider()
 
-        # self.moms = MultiChoice(
-        #     "Moments to compute",
-        #     MOM_ALL,
-        #     MOM_ALL,
-        #     doc="""Moments are statistics describing the distribution of values in the set of pixels of interest:
-                
-        #         - %(MOM_1)s - the first image moment, which corresponds to the central value of the collection of pixels of interest.
-        #         - %(MOM_2)s - the second image moment, which measures the amount of variation or dispersion of pixel values about its mean.
-        #         - %(MOM_3)s - a scaled version of the third moment, which measures the asymmetry of the pixel values distribution about its mean.
-        #         - %(MOM_4)s - a scaled version of the fourth moment, which measures the "peakedness" of the pixel values distribution.
-                
-        #         Choose one or more moments to measure."""
-        #     % globals(),
-        # )
-
     def settings(self):
         """The settings as they appear in the save file."""
         result = [self.image_count, self.object_count]
@@ -124,7 +104,6 @@ class CalculateGini(cpm.Module):
             for group in groups:
                 for element in elements:
                     result += [getattr(group, element)]
-        # result += [self.moms]
         return result
 
     def prepare_settings(self, setting_values):
@@ -149,7 +128,6 @@ class CalculateGini(cpm.Module):
                 result += group.visible_settings()
             result += [add_button, div]
 
-        # result += [self.moms]
         return result
 
     def add_image_cb(self, can_remove=True):
@@ -166,8 +144,7 @@ class CalculateGini(cpm.Module):
             ImageSubscriber(
                 "Select an image to measure",
                 "None",
-                doc="""
-                                             What did you call the grayscale images whose moments you want to calculate?""",
+                doc="""What did you call the grayscale images whose Gini you want to calculate?""",
             ),
         )
         if can_remove:
@@ -194,13 +171,13 @@ class CalculateGini(cpm.Module):
                 "Select objects to measure",
                 "None",
                 doc="""
-                     What did you call the objects from which you want to calculate the Gini?
-                     If you only want to calculate moments of
-                     the image overall, you can remove all objects using the "Remove this object" button.
-                     Objects specified here will have moments computed against *all* images specified above, which
-                     may lead to image-object combinations that are unnecessary. If you
-                     do not want this behavior, use multiple CalculateGini
-                     modules to specify the particular image-object measures that you want.""",
+                What did you call the objects from which you want to calculate the Gini?
+                If you only want to calculate the Gini of the image overall, you can remove
+                all objects using the "Remove this object" button. Objects specified here
+                will have Gini computed against *all* images specified above, which
+                may lead to image-object combinations that are unnecessary. If you
+                do not want this behavior, use multiple CalculateGini modules to specify
+                the particular image-object measures that you want.""",
             ),
         )
         if can_remove:
@@ -252,9 +229,7 @@ class CalculateGini(cpm.Module):
         input_image = workspace.image_set.get_image(image_name, must_be_grayscale=True)
         pixels = input_image.pixel_data
         gini = get_gini_on_pixels(pixels)
-        statistics += self.record_image_measurement(
-            workspace, image_name, 'Gini', gini
-        )
+        statistics += self.record_image_measurement(workspace, image_name, "Gini", gini)
         return statistics
 
     def run_object(self, image_name, object_name, workspace):
@@ -288,7 +263,7 @@ class CalculateGini(cpm.Module):
         # the good stuff
         gini = get_gini(pixels, labels)
         statistics += self.record_measurement(
-            workspace, image_name, object_name, 'Gini', gini
+            workspace, image_name, object_name, "Gini", gini
         )
         return statistics
 
@@ -297,12 +272,12 @@ class CalculateGini(cpm.Module):
 
     def display(self, workspace, figure):
         statistics = workspace.display_data.statistics
-        figure.set_subplots((1,1))
+        figure.set_subplots((1, 1))
         figure.subplot_table(0, 0, statistics, ratio=(0.25, 0.25, 0.25, 0.25))
 
     def get_features(self):
         """Return a measurement feature name"""
-        return ['Gini']
+        return ["Gini"]
 
     def get_measurement_columns(self, pipeline):
         """Get column names output for each measurement."""
